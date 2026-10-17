@@ -1,0 +1,183 @@
+import importlib.util
+import hashlib
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+validator = load("validator", ROOT / "scripts/validate-docs.py")
+builder = load("builder", ROOT / "scripts/build-docs.py")
+publisher = load("publisher", ROOT / "scripts/push-docs.py")
+
+
+class PublicationBoundaryTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        (self.root / "public-pages.json").write_text(json.dumps(["README.md"]), encoding="utf-8")
+        (self.root / "README.md").write_text("# Welcome\n\nPublic guide.\n", encoding="utf-8")
+        (self.root / "mkdocs.yml").write_text(
+            "site_name: Test\nnav:\n  - Home: index.md\n", encoding="utf-8")
+        (self.root / "AGENTS.md").write_text("Private tooling instructions", encoding="utf-8")
+        (self.root / "update-config.json").write_text('{"not-a-page": true}', encoding="utf-8")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_valid_pages(self):
+        self.assertEqual(validator.validate(self.root), [])
+
+    def test_private_markdown_is_rejected_even_if_unlisted(self):
+        (self.root / "internal.md").write_text("Internal notes", encoding="utf-8")
+        self.assertTrue(validator.validate(self.root))
+
+    def test_code_and_client_names_are_rejected(self):
+        for text in ("lib/main.dart", "SubscriptionService", "WorkManager", "v2rayNG",
+                     "Shadowrocket", "v2rayN", "expireDate", "нативной поддержки ядра",
+                     "парсер строит конфиг", "Main.java", "build.gradle.kts", "main.cpp"):
+            (self.root / "README.md").write_text(text, encoding="utf-8")
+            self.assertTrue(validator.validate(self.root), text)
+
+    def test_links_cannot_reference_service_files_or_parent(self):
+        for target in ("AGENTS.md", "../private.md", "missing.md", "README.md#absent"):
+            (self.root / "README.md").write_text(f"# Welcome\n[Link]({target})", encoding="utf-8")
+            self.assertTrue(validator.validate(self.root), target)
+
+    def test_nav_and_manifest_must_match(self):
+        for config in (
+            "site_name: Test\nnav:\n  - Home: index.md\n  - Extra: extra.md\n",
+            "site_name: Test\nnav:\n  - Home: index.md\n  - Home: index.md\n",
+            "site_name: Test\nnav:\n  - Home: other.md\n",
+            "site_name: Test\n",
+        ):
+            (self.root / "mkdocs.yml").write_text(config, encoding="utf-8")
+            self.assertTrue(validator.validate(self.root), config)
+
+    def test_manifest_cannot_publish_agent_rules_or_escape(self):
+        for pages in (["AGENTS.md"], ["../README.md"], ["README.md", "README.md"]):
+            (self.root / "public-pages.json").write_text(json.dumps(pages), encoding="utf-8")
+            self.assertTrue(validator.validate(self.root))
+
+    def test_prepared_source_contains_only_public_pages(self):
+        stage = builder.prepare(self.root)
+        self.assertEqual({p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file()},
+                         {"index.md"})
+        self.assertFalse((stage / "AGENTS.md").exists())
+        self.assertFalse((stage / "update-config.json").exists())
+
+    def test_push_rejects_application_remote(self):
+        with patch.object(publisher, "git", return_value="https://gitlab.com/samueladamson37/imsel-vpn.git"):
+            with self.assertRaises(ValueError):
+                publisher.check_remote("origin", publisher.REMOTES["origin"])
+
+    def test_push_checks_fetch_and_push_destinations(self):
+        with patch.object(publisher, "git", return_value=publisher.REMOTES["origin"]) as git:
+            publisher.check_remote("origin", publisher.REMOTES["origin"])
+            self.assertEqual(git.call_count, 2)
+
+    def test_private_source_is_rejected_even_when_not_a_page(self):
+        for name in ("main.dart", "Main.java", "Main.JAVA", "Main.kt", "build.gradle",
+                     "build.gradle.kts", "App.swift", "main.c", "main.cc", "main.cpp",
+                     "main.h", "main.hpp", "App.m", "App.mm", "main.cs", "main.go",
+                     "main.rs", "generated.cmake", "project.pbxproj", "App.xcconfig",
+                     "App.xcscheme", "App.podspec", "App.vcxproj", "App.sln", "App.rc",
+                     "App.entitlements", "Main.storyboard", "release.jks", "release.keystore",
+                     "CMakeLists.txt", "pubspec.yaml", "pubspec.lock", "AndroidManifest.xml",
+                     "Podfile", "Podfile.lock", "gradlew", "gradlew.bat", "gradle.properties"):
+            with self.subTest(name=name):
+                path = self.root / "unlisted" / name
+                path.parent.mkdir(exist_ok=True)
+                path.write_text("private application material", encoding="utf-8")
+                try:
+                    self.assertIn(
+                        f"Private application material in public repository: unlisted/{name}",
+                        validator.validate(self.root),
+                    )
+                finally:
+                    path.unlink()
+
+    def test_documentation_tooling_is_allowed_but_not_published(self):
+        names = ("scripts/validate-docs.py", "scripts/check.sh", "tests/test_docs.py",
+                 ".github/workflows/pages.yml", ".gitlab-ci.yml")
+        for name in names:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("documentation tooling", encoding="utf-8")
+        self.assertEqual(validator.validate(self.root), [])
+        stage = builder.prepare(self.root)
+        self.assertEqual({p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file()},
+                         {"index.md"})
+
+    def test_public_subscription_formats_are_allowed(self):
+        (self.root / "README.md").write_text(
+            "# Welcome\n```http\nsubscription-userinfo: expire=1700000000\n"
+            "routing: imsel://routing/onadd/ZXhhbXBsZQ==\n```\n"
+            '```json\n{"allowInsecure": false}\n```\n', encoding="utf-8")
+        self.assertEqual(validator.validate(self.root), [])
+
+    def test_implementation_code_blocks_are_rejected(self):
+        for language in ("dart", "kotlin", "swift", "java", "python", "go", "c", "cpp",
+                         "objective-c", "csharp", "rust"):
+            with self.subTest(language=language):
+                (self.root / "README.md").write_text(
+                    f"# Welcome\n```{language}\nimplementation\n```\n", encoding="utf-8")
+                self.assertIn("README.md: source-code example is not public documentation",
+                              validator.validate(self.root))
+
+    def test_update_config_changes_need_separate_authorization(self):
+        for results in (["update-config.json", ""], ["", "changed-commit"]):
+            with patch.object(publisher, "git", side_effect=results):
+                with self.assertRaises(ValueError):
+                    publisher.check_update_config("old", "new", False)
+        with patch.object(publisher, "git") as git:
+            publisher.check_update_config("old", "new", True)
+            git.assert_not_called()
+
+    def test_reset_old_final_and_changed_remote_states(self):
+        tip, old, branch = '1' * 40, '2' * 40, '3' * 40
+        expected = {name: (old, branch) for name in publisher.REMOTES}
+        checksum = hashlib.sha256((ROOT / 'update-config.json').read_bytes()).hexdigest()
+        original = f'{old}\trefs/heads/main\n{branch}\trefs/heads/docs/ping-concurrency-settings'
+        final = f'{tip}\trefs/heads/main'
+        for states, pending in (([original, original], ['origin', 'gitlab']),
+                                ([final, original], ['gitlab']),
+                                ([original, final], ['origin']),
+                                ([final, final], [])):
+            with self.subTest(states=states):
+                def fake_git(*args):
+                    if args[0] == 'rev-parse':
+                        return tip
+                    if args[0] == 'rev-list':
+                        return '1'
+                    return states[list(publisher.REMOTES).index(args[-1])]
+                with patch.object(publisher, 'git', side_effect=fake_git), patch.object(publisher, 'check_remote'), patch.object(publisher.subprocess, 'check_output', return_value=(ROOT / 'update-config.json').read_bytes()):
+                    self.assertEqual(publisher.reset_plan(expected, checksum), pending)
+        with patch.object(publisher, 'git', side_effect=[tip, '1', f'{old}\trefs/heads/main']), patch.object(publisher, 'check_remote'), patch.object(publisher.subprocess, 'check_output', return_value=(ROOT / 'update-config.json').read_bytes()):
+            with self.assertRaisesRegex(ValueError, 'Remote refs changed'):
+                publisher.reset_plan(expected, checksum)
+
+    def test_reset_rejects_multiple_commits_or_changed_update_config(self):
+        expected = {name: ('2' * 40, '3' * 40) for name in publisher.REMOTES}
+        with patch.object(publisher, 'git', side_effect=['1' * 40, '2']):
+            with self.assertRaisesRegex(ValueError, 'exactly one'):
+                publisher.reset_plan(expected, 'unused')
+        with patch.object(publisher, 'git', side_effect=['1' * 40, '1']), patch.object(publisher.subprocess, 'check_output', return_value=b'changed'):
+            with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
+                publisher.reset_plan(expected, 'invalid')
+
+
+if __name__ == "__main__":
+    unittest.main()

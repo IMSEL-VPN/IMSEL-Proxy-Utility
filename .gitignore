@@ -1,0 +1,7 @@
+# Сборка Material for MkDocs
+public/
+.build/
+__pycache__/
+
+# Локальные правила для AI-агентов, не для публичного репозитория
+AGENTS.md

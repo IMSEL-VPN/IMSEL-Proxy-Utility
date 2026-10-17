@@ -1,0 +1,78 @@
+# Сборка: python scripts/build-docs.py (страницы копируются в .build/site-src
+# из разрешённого списка public-pages.json, затем mkdocs собирает public/).
+site_name: IMSEL Proxy Utility
+site_description: Документация IMSEL VPN для пользователей и провайдеров подписок
+site_url: https://gitlab-docs.imsel.dev/
+docs_dir: .build/site-src
+site_dir: public
+
+nav:
+  - "Введение": index.md
+  - "Частые вопросы (FAQ)":
+      - "Добавление подписок и серверов": faq/getting-started.md
+      - "Обновление подписок": faq/subscription-updates.md
+      - "Раздельное туннелирование (Split Tunneling)": faq/split-tunneling.md
+      - "Offline-раздача подписок": faq/subscription-sharing.md
+      - "Профили маршрутизации": faq/routing-profiles.md
+      - "Ошибки и решения": faq/troubleshooting.md
+  - "Для провайдеров подписок":
+      - "Управление приложением": dev-docs/app-management.md
+      - "Готовые конфигурации серверов": docs/json-configurations.md
+      - "Подписка через домен-фронтинг": dev-docs/domain-fronting.md
+  - "Юридическая информация":
+      - "Terms of Service": terms-of-service.md
+      - "Privacy Policy": privacy-policy.md
+
+theme:
+  name: material
+  language: ru
+  font: false
+  icon:
+    logo: material/shield-check
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: "Переключить на тёмную тему"
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: "Переключить на светлую тему"
+  features:
+    - navigation.top
+    - navigation.tracking
+    - navigation.sections
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+
+plugins:
+  - search:
+      lang:
+        - ru
+        - en
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - toc:
+      permalink: true
+      slugify: !!python/name:markdown.extensions.toc.slugify_unicode
+
+extra:
+  generator: false
