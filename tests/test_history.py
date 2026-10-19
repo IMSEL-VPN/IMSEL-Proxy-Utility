@@ -1,4 +1,4 @@
-import importlib.util
+﻿import importlib.util
 import json
 import os
 from pathlib import Path
@@ -92,7 +92,7 @@ class HistoryGuardTest(unittest.TestCase):
 
     def test_application_url_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'not a documentation'):
-            guard.check_destination('origin', 'https://gitlab.com/samueladamson37/imsel-vpn.git')
+            guard.check_destination('origin', 'https://gitlab.com/IMSEL-VPN/imsel-vpn.git')
 
     def test_all_outgoing_tips_are_checked(self):
         first, second = '1' * 40, '2' * 40

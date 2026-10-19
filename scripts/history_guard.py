@@ -11,8 +11,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DESTINATIONS = {
-    'https://gitlab.com/samueladamson37/imsel-proxy-utility.git',
-    'https://github.com/samueladamson37-web/IMSEL-Proxy-Utility.git',
+    'https://gitlab.com/IMSEL-VPN/imsel-proxy-utility.git',
+    'https://github.com/IMSEL-VPN/IMSEL-Proxy-Utility.git',
 }
 ZERO = '0' * 40
 BASE_FILES = {
