@@ -12,8 +12,8 @@ from history_guard import validate_history
 
 ROOT = Path(__file__).resolve().parents[1]
 REMOTES = {
-    "origin": "https://github.com/samueladamson37-web/IMSEL-Proxy-Utility.git",
-    "gitlab": "https://gitlab.com/samueladamson37/imsel-proxy-utility.git",
+    "origin": "https://github.com/IMSEL-VPN/IMSEL-Proxy-Utility.git",
+    "gitlab": "https://gitlab.com/IMSEL-VPN/imsel-proxy-utility.git",
 }
 
 

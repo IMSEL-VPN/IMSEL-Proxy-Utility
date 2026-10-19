@@ -79,7 +79,7 @@ class PublicationBoundaryTest(unittest.TestCase):
         self.assertFalse((stage / "update-config.json").exists())
 
     def test_push_rejects_application_remote(self):
-        with patch.object(publisher, "git", return_value="https://gitlab.com/samueladamson37/imsel-vpn.git"):
+        with patch.object(publisher, "git", return_value="https://gitlab.com/IMSEL-VPN/imsel-vpn.git"):
             with self.assertRaises(ValueError):
                 publisher.check_remote("origin", publisher.REMOTES["origin"])
 
