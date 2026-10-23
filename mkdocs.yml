@@ -17,6 +17,7 @@ nav:
       - "Ошибки и решения": faq/troubleshooting.md
   - "Для провайдеров подписок":
       - "Управление приложением": dev-docs/app-management.md
+      - "Директивы отдельного сервера": dev-docs/server-directives.md
       - "Готовые конфигурации серверов": docs/json-configurations.md
       - "Подписка через домен-фронтинг": dev-docs/domain-fronting.md
   - "Юридическая информация":
