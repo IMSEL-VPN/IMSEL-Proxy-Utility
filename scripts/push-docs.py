@@ -61,6 +61,25 @@ def reset_plan(expected, update_config_hash):
     return pending
 
 
+def check_origin_recovery(expected, backup, tip, commit):
+    """Explicit, backed-up recovery of origin/main; never guess a lease."""
+    if not re.fullmatch(r"[0-9a-f]{40}", expected):
+        raise ValueError("Origin recovery requires an exact old main SHA")
+    if tip not in (expected, commit):
+        raise ValueError("Origin main changed since recovery was authorized")
+    backup = Path(backup)
+    if not backup.is_absolute() or not backup.is_file():
+        raise ValueError("Origin recovery requires an existing absolute backup bundle")
+    if backup.resolve().is_relative_to(ROOT.resolve()):
+        raise ValueError("Recovery backup must be outside the documentation repository")
+    subprocess.run(["git", "bundle", "verify", str(backup)], cwd=ROOT, check=True)
+    heads = git("bundle", "list-heads", str(backup)).splitlines()
+    if not any(row.split()[0] == expected for row in heads):
+        raise ValueError("Recovery bundle does not contain the authorized origin main")
+    # Recovery must not change update delivery, even under --allow-update-config.
+    check_update_config(expected, commit, False)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--execute", action="store_true")
@@ -69,7 +88,13 @@ def main():
     parser.add_argument("--expected-origin", nargs=2, metavar=("MAIN", "DOCS_BRANCH"))
     parser.add_argument("--expected-gitlab", nargs=2, metavar=("MAIN", "DOCS_BRANCH"))
     parser.add_argument("--preserved-update-config-sha256")
+    parser.add_argument("--recover-origin-main", metavar="EXPECTED_SHA")
+    parser.add_argument("--origin-backup", type=Path, metavar="BUNDLE")
     args = parser.parse_args()
+    if bool(args.recover_origin_main) != bool(args.origin_backup):
+        raise ValueError("Origin recovery requires both an exact lease and backup bundle")
+    if args.recover_origin_main and args.reset_history:
+        raise ValueError("Origin recovery cannot be combined with history reset")
     if Path(git("rev-parse", "--show-toplevel")).resolve() != ROOT.resolve():
         raise ValueError("Not the documentation Git root")
     if git("branch", "--show-current") != "main" or git("status", "--porcelain"):
@@ -88,7 +113,10 @@ def main():
             check_remote(name, url)
             subprocess.run(["git", "fetch", "--no-tags", name, "main"], cwd=ROOT, check=True)
             tip = git("rev-parse", "FETCH_HEAD")
-            subprocess.run(["git", "merge-base", "--is-ancestor", tip, commit], cwd=ROOT, check=True)
+            if name == "origin" and args.recover_origin_main:
+                check_origin_recovery(args.recover_origin_main, args.origin_backup, tip, commit)
+            else:
+                subprocess.run(["git", "merge-base", "--is-ancestor", tip, commit], cwd=ROOT, check=True)
             check_update_config(tip, commit, args.allow_update_config)
     validate_history(commit)
     subprocess.run([sys.executable, "scripts/validate-docs.py"], cwd=ROOT, check=True)
@@ -117,6 +145,13 @@ def main():
                 command += ["--atomic", f"--force-with-lease=refs/heads/main:{old_main}",
                             f"--force-with-lease=refs/heads/docs/ping-concurrency-settings:{old_branch}"]
                 environment["DOCS_RESET_DELETE_SHA"] = old_branch
+            elif name == "origin" and args.recover_origin_main:
+                current = git("ls-remote", "--heads", name, "refs/heads/main").split()
+                if len(current) != 2:
+                    raise ValueError("Origin main is missing or ambiguous")
+                check_origin_recovery(args.recover_origin_main, args.origin_backup, current[0], commit)
+                if current[0] != commit:
+                    command += [f"--force-with-lease=refs/heads/main:{args.recover_origin_main}"]
             command += [name, f"{commit}:refs/heads/main"]
             if args.reset_history:
                 command += [":refs/heads/docs/ping-concurrency-settings"]

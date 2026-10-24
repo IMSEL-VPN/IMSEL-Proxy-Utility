@@ -178,6 +178,44 @@ class PublicationBoundaryTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
                 publisher.reset_plan(expected, 'invalid')
 
+    def test_origin_recovery_accepts_exact_backup_and_already_published_tip(self):
+        old, tip = '1' * 40, '2' * 40
+        bundle = self.root / 'backup.bundle'
+        bundle.write_bytes(b'fixture')
+        for remote in (old, tip):
+            with self.subTest(remote=remote), patch.object(publisher.subprocess, 'run') as run, patch.object(publisher, 'git', return_value=f'{old} refs/remotes/origin/main'), patch.object(publisher, 'check_update_config') as check:
+                publisher.check_origin_recovery(old, bundle, remote, tip)
+                self.assertEqual(run.call_args.args[0], ['git', 'bundle', 'verify', str(bundle)])
+                check.assert_called_once_with(old, tip, False)
+
+    def test_origin_recovery_rejects_changed_remote_or_missing_exact_lease(self):
+        for expected, remote in (('main', '1' * 40), ('1' * 40, '3' * 40)):
+            with self.subTest(expected=expected, remote=remote), patch.object(publisher.subprocess, 'run') as run:
+                with self.assertRaises(ValueError):
+                    publisher.check_origin_recovery(expected, self.root / 'missing.bundle', remote, '2' * 40)
+                run.assert_not_called()
+
+    def test_origin_recovery_rejects_missing_in_repo_or_wrong_backup(self):
+        old, tip = '1' * 40, '2' * 40
+        bundle = self.root / 'backup.bundle'
+        bundle.write_bytes(b'fixture')
+        for path in (Path('relative.bundle'), self.root / 'missing.bundle', ROOT / 'AGENTS.md'):
+            with self.subTest(path=path), patch.object(publisher.subprocess, 'run') as run:
+                with self.assertRaises(ValueError):
+                    publisher.check_origin_recovery(old, path, old, tip)
+                run.assert_not_called()
+        with patch.object(publisher.subprocess, 'run'), patch.object(publisher, 'git', return_value=f'{tip} refs/heads/main'):
+            with self.assertRaisesRegex(ValueError, 'does not contain'):
+                publisher.check_origin_recovery(old, bundle, old, tip)
+
+    def test_origin_recovery_never_authorizes_update_config_change(self):
+        old, tip = '1' * 40, '2' * 40
+        bundle = self.root / 'backup.bundle'
+        bundle.write_bytes(b'fixture')
+        with patch.object(publisher.subprocess, 'run'), patch.object(publisher, 'git', return_value=f'{old} refs/heads/main'), patch.object(publisher, 'check_update_config', side_effect=ValueError('update-config.json changed')):
+            with self.assertRaisesRegex(ValueError, 'update-config.json changed'):
+                publisher.check_origin_recovery(old, bundle, old, tip)
+
 
 if __name__ == "__main__":
     unittest.main()
