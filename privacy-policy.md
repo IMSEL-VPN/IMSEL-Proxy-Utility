@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** October 5, 2026
+**Last updated:** November 3, 2026
 
 This Privacy Policy describes how the IMSEL VPN mobile application ("App") handles information when you use it. The App is provided free of charge by the IMSEL VPN developer ("We", "Us", "Developer"). Contact: [imsel.vpn@gmail.com](mailto:imsel.vpn@gmail.com).
 
@@ -61,7 +61,7 @@ We do not sell your data. Data is shared only with the processors described abov
 | Yandex AppMetrica | Crash reports, anonymized analytics | Device/app metadata, events, crash data |
 | Yandex Mobile Ads | Ad delivery | Advertising identifiers, device data |
 
-**App log file (`app.log`, stored only on your device):** the App records subscription update diagnostics — subscription names, mirror hosts, and failure reasons (HTTP status/timeout). For subscriptions marked "encrypted" by you, hosts and URLs are never written to the log; only the subscription name and the type of failure are recorded. You can view and clear this log anytime (Logs screen).
+**Local diagnostic logs:** the Logs screen provides separate subscription-update and VPN-core logs. There is no general application-log tab or dedicated general application-log file. Subscription diagnostics may include subscription names, HTTP status codes, timeouts, and failure categories; supported URL, host/SNI, IP-address, and credential forms are masked. VPN-core diagnostics can include network endpoints, and masking does not guarantee removal of every sensitive value. Logs are stored locally and are not automatically sent to the Developer. You can view, clear, copy, or export the two logs; review an exported log before sharing it. Removing the general application log does not disable the analytics or crash reporting described in section 2.2.
 
 HTTPS subscription links use TLS. HTTP links do not encrypt the download. Explicitly allowing an untrusted certificate weakens server identity verification and can expose subscription data to interception or alteration.
 
